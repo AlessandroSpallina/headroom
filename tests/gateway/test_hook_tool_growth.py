@@ -111,6 +111,10 @@ def test_message_growth_offsets_tools_a_hook_removed(
     assert (net > 0) == (repeat == 5)
     outcome = outcomes[-1]
     headline = headline_tokens_saved(outcome.tokens_saved, outcome.tags)
+    # The answer reports the same headline, none of it estimated.
+    data = resp.json()
+    assert data["tokens_saved"] + data["tool_tokens_saved"] == headline
+    assert data["tool_tokens_deferred"] == 0
     # The gateway compacts tool schemas before hooks run: the hook's own ledger
     # covers the compacted schema, and the compaction delta is inside
     # tokens_saved, so the headline is the two together.
