@@ -11055,6 +11055,13 @@ class OpenAIHandlerMixin:
             # the saving, and offset tools the hook removed (signed, clamped once).
             _hook_tool_saved = 0
             if _turn is not None:
+                # Tool-schema compaction, folded into both endpoints as the chat
+                # handlers do: the message counts never see tool bytes.
+                _compacted_before = int(getattr(_turn, "compaction_tokens_before", 0) or 0)
+                _compacted_after = int(getattr(_turn, "compaction_tokens_after", 0) or 0)
+                if 0 < _compacted_after < _compacted_before:
+                    tokens_before += _compacted_before
+                    tokens_after += _compacted_after
                 tokens_after += max(0, int(getattr(_turn, "tool_growth_tokens", 0) or 0))
                 # Only a count of pre-hook messages lacks the text a hook added;
                 # a recount of the final messages (stateless fold, session) has it.
