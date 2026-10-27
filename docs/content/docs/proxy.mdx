@@ -652,7 +652,7 @@ Keep carrying both yourself and send them upstream unchanged. Two consequences w
 | `transforms_applied` | array | Transform labels that ran. |
 | `transforms_summary` | object | Per-transform counts. |
 | `ccr_hashes` | array | Retrieval hashes for markers inserted (empty unless `mode: "ccr"`). |
-| `session` | object | [Session mode](#session-mode) only: `{ "id", "frozen_message_count", "cached_prefix_replayed" }`. |
+| `session` | object | [Session mode](#session-mode) only: `{ "id", "frozen_message_count", "cached_prefix_replayed" }`, described there. |
 
 ```json
 {
@@ -741,8 +741,18 @@ Pass `config.session_id` and Headroom keeps the conversation's replay state itse
 The response gains a `session` object:
 
 ```json
-"session": { "id": "conv-8f1c", "frozen_message_count": 12, "cached_prefix_replayed": true }
+"session": { "id": "conv-8f1c", "frozen_message_count": 12, "cached_prefix_replayed": false }
 ```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string | The session id this turn ran under: `config.session_id` as sent, or the `x-headroom-session-id` header when `HEADROOM_COMPRESS_SESSION_FROM_HEADER=1` and `config.session_id` is absent. |
+| `frozen_message_count` | integer | How many leading messages the pipeline was told not to recompress this turn. Headroom counts the leading run it can replay from the session's compression cache: plain messages always count, a tool result counts only once its content is in that cache, and the last message never counts. An explicit `config.frozen_message_count` wins when larger. It is derived from Headroom's own state, not from the provider, and it can be non-zero on a first turn. |
+| `cached_prefix_replayed` | boolean | `true` when the pipeline's output for some leading messages differed from what this endpoint returned for the session last turn, and Headroom overwrote those messages with last turn's bytes. `false` when nothing was overwritten: when the serving process holds no previous turn for the session (a first turn, expired state, or a replica that never served or loaded it), when the pipeline already produced last turn's bytes (the usual case), or when the replay was skipped as unsafe (this turn's messages do not line up with last turn's, or the replay would be larger than the pipeline's output). So `false` does not mean the returned prefix matches last turn's. |
+
+<Callout type="warning" title="cached_prefix_replayed is not a prompt-cache hit">
+`cached_prefix_replayed` reports Headroom's own repair step. It says nothing about whether the provider served the prefix from its prompt cache. `false` is the normal value on a healthy session, and it is also what a turn that changed the prefix returns when there was nothing to replay. Read cache hits and misses from the provider's usage (`cache_read_input_tokens`, `prompt_tokens_details.cached_tokens`).
+</Callout>
 
 What differs from the stateless contract:
 

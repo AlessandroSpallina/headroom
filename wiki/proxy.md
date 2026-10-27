@@ -305,7 +305,7 @@ Compression-only endpoint. Compresses messages without ever making a **completio
   "transforms_applied": ["router:smart_crusher:0.35"],
   "transforms_summary": {"router:smart_crusher:0.35": 1},
   "ccr_hashes": [],             // non-empty only with mode="ccr"
-  "session": {"id": "conv-8f1c", "frozen_message_count": 12, "cached_prefix_replayed": true}  // session mode only
+  "session": {"id": "conv-8f1c", "frozen_message_count": 12, "cached_prefix_replayed": false}  // session mode only
 }
 ```
 
@@ -343,6 +343,8 @@ def next_turn(new_messages):
 Note `protect_recent` is not a substitute — it guards the newest messages, while `frozen_message_count` guards the oldest, which is the cached end.
 
 **Session mode.** Pass `config.session_id` (non-empty, at most 256 chars) and Headroom keeps the conversation's replay state itself — the same per-session compression cache and prefix tracker the proxy uses — so a gateway that owns routing can resend the raw conversation every turn and get a byte-identical prefix back. Everything previously returned for the session comes back unchanged; only the new tail is compressed; an explicit `frozen_message_count` still wins when larger. Forward the returned messages verbatim. `compress_user_messages` is refused (400). State is in-process (replay cache: `HEADROOM_COMPRESSION_CACHE_TTL_SECONDS`, default 3900; tracker state: 10 idle minutes), so multi-process deployments must pin a session to one process. `HEADROOM_COMPRESS_SESSION_FROM_HEADER=1` lets the `x-headroom-session-id` header stand in for `config.session_id` (off by default).
+
+The response's `session` object: `id` is the session id the turn ran under (`config.session_id`, or the header above). `frozen_message_count` is how many leading messages the pipeline was told not to recompress: the leading run Headroom can replay from the session's compression cache (plain messages always count, a tool result only once its content is cached, the last message never), or `config.frozen_message_count` when larger; it comes from Headroom's state, not the provider, and can be non-zero on a first turn. `cached_prefix_replayed` is `true` when the pipeline's output for some leading messages differed from what was returned last turn and Headroom overwrote them with last turn's bytes; `false` when the serving process holds no previous turn for the session (first turn, expired state, a replica that never served or loaded it), when the pipeline already matched (the usual case), or when the replay was skipped as unsafe (messages do not line up with last turn's, or the replay would be larger), so `false` does not mean the prefix matches last turn's. It is **not** a provider prompt-cache hit/miss signal; read that from the provider's usage (`cache_read_input_tokens`, `cached_tokens`).
 
 Optionally relay the provider's usage for attribution with `POST /v1/usage` `{"session_id": "...", "usage": {...}}`. Anthropic `cache_read_input_tokens` / `cache_creation_input_tokens` and OpenAI `prompt_tokens_details.cached_tokens` / flat `cached_tokens` are accepted; a block with none of them is a 400. Replies `{"session_id", "frozen_message_count", "applied"}` (`applied: false, reason: "no_cache_signal"` when the only present field is 0), 404 `unknown_session`, or 503 `session_busy` (retry). Telemetry only — it never raises the frozen count.
 
